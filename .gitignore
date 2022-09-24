@@ -48,5 +48,7 @@ coverage.xml
 
 # Sphinx documentation
 docs/_build/
-/python-server.iml
+
+# IntelliJ project
 /.idea/
+*.iml
