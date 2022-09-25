@@ -1,6 +1,5 @@
 import pytest
 import requests
-from werkzeug.exceptions import UnprocessableEntity
 
 from flaskr import server
 from flaskr.server import app
@@ -49,11 +48,12 @@ def test_missing_java(client, valid_json, requests_mock):
     assert server.ERROR_MESSAGE_JAVA_IS_DOWN in response.text
 
 
-def test_java_rethrow_422(client, valid_json, requests_mock):
+def test_java_rethrow_error(client, valid_json, requests_mock):
+    java_status_code = 4221
     java_error = "Java validator fail."
-    requests_mock.post(server.JAVA_SERVER_ADDRESS, exc=UnprocessableEntity(java_error))
+    requests_mock.post(server.JAVA_SERVER_ADDRESS, text=java_error, status_code=java_status_code)
     response = client.post("/rgb", content_type="application/json", json=valid_json)
-    assert response.status_code == 422
+    assert response.status_code == java_status_code
     assert java_error in response.text
 
 

@@ -6,7 +6,7 @@ Install dependencies:
 
 Run from CLI: 
     Navigate to the project directory / use the terminal in IntelliJ
-    python -m flask --app flaskr/server run
+    python -m flask --app flaskr run
 
 IntelliJ:
     Create a new Python configuration. Leave script empty. Set Parameters to "-m flask --app flaskr/server run". Set Working Directory to your project's directory.

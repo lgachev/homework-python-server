@@ -1,11 +1,10 @@
 import requests
-from flask import Flask, request
-from werkzeug.exceptions import UnprocessableEntity
+from flask import request
+from werkzeug.exceptions import UnprocessableEntity, HTTPException
 
-# Configurations
-SERVER_NAME = "python-server"
-JAVA_SERVER_ADDRESS = "http://127.0.0.1:8080/rgb"
 # Error messages
+from flaskr import JAVA_SERVER_ADDRESS, app
+
 ERROR_MESSAGE_DRAMATIC = "The Horror! "
 ERROR_MESSAGE_MISSING_SESSION_ID = "Missing session id."
 ERROR_MESSAGE_MISSING_TIMESTAMP = "Missing timestamp."
@@ -16,8 +15,6 @@ ERROR_MESSAGE_RGB_VALUE_OUT_OF_RANGE = "The RGB values should be integers betwee
 ERROR_MESSAGE_JAVA_IS_DOWN = "The java server is sad and not answering any calls :("
 # Return Messages
 RETURN_MESSAGE_POSITIVE = "Java server is up and happily running!"
-
-app = Flask(SERVER_NAME)
 
 
 @app.post('/rgb')
@@ -40,7 +37,9 @@ def css_builder_service(request_json):
     del response_json["blue"]
     response_json["cssBackgroundColor"] = css_background_color
 
-    requests.post(JAVA_SERVER_ADDRESS, json=response_json)
+    java_response = requests.post(JAVA_SERVER_ADDRESS, json=response_json)
+    if java_response.status_code != 200:
+        raise _JavaError(java_response.status_code, java_response.text)
 
 
 def _validate_request(json):
@@ -83,11 +82,25 @@ def _format_css(css_template: str, red, green, blue):
     return result
 
 
+class _JavaError(HTTPException):
+    def __init__(self, status_code, message):
+        self.code = status_code
+        self.message = message
+
+
 @app.errorhandler(UnprocessableEntity)
 def _handle_unprocessable_entity(e: UnprocessableEntity):
+    app.logger.info(ERROR_MESSAGE_DRAMATIC + e.description)
     return ERROR_MESSAGE_DRAMATIC + e.description, 422
 
 
 @app.errorhandler(requests.ConnectionError)
-def _handle_service_unavailable(e: requests.ConnectionError):
+def _handle_service_unavailable(e: ConnectionError):
+    app.logger.info(ERROR_MESSAGE_JAVA_IS_DOWN)
     return ERROR_MESSAGE_JAVA_IS_DOWN, 503
+
+
+@app.errorhandler(_JavaError)
+def _handle_java_error(e: _JavaError):
+    app.logger.info(str(e.code) + " " + e.message)
+    return e.message, e.code
