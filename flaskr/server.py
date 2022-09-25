@@ -1,6 +1,5 @@
 import requests
 from flask import Flask, request
-from requests import ConnectionError
 from werkzeug.exceptions import UnprocessableEntity
 
 # Configurations
@@ -10,10 +9,10 @@ JAVA_SERVER_ADDRESS = "http://127.0.0.1:8080/rgb"
 ERROR_MESSAGE_DRAMATIC = "The Horror! "
 ERROR_MESSAGE_MISSING_SESSION_ID = "Missing session id."
 ERROR_MESSAGE_MISSING_TIMESTAMP = "Missing timestamp."
-ERROR_MESSAGE_MISSING_TEMPLATE = "Missing one or more css templates."
-ERROR_MESSAGE_MISSING_TEXT = "Missing one or more RGB values."
-ERROR_MESSAGE_MISSING_VALUES = "Missing one or more RGB values."
-ERROR_MESSAGE_VALUE_OUT_OF_RANGE = "The RGB values should be integers between 0 and 255."
+ERROR_MESSAGE_MISSING_TEMPLATE = "Missing background color css template."
+ERROR_MESSAGE_MISSING_RGB_VALUES_IN_TEMPLATE = "Missing one or more RGB values in the template."
+ERROR_MESSAGE_MISSING_RGB_VALUES = "Missing one or more RGB values."
+ERROR_MESSAGE_RGB_VALUE_OUT_OF_RANGE = "The RGB values should be integers between 0 and 255."
 ERROR_MESSAGE_JAVA_IS_DOWN = "The java server is sad and not answering any calls :("
 # Return Messages
 RETURN_MESSAGE_POSITIVE = "Java server is up and happily running!"
@@ -27,20 +26,24 @@ def rgb():
     return RETURN_MESSAGE_POSITIVE
 
 
-def css_builder_service(json):
-    validate_request(json)
-    session_id = json['sessionId']
-    timestamp = timestamp = json['timestamp']
-    css_background_color_template = json['cssBackgroundColorTemplate']
-    css_text_color_template = json['cssTextColorTemplate']
-    red = json['red']
-    green = json['green']
-    blue = json['blue']
-    css_background_color = format_css(css_background_color_template, red, green, blue)
-    call_java(session_id, timestamp, css_background_color, css_text_color_template)
+def css_builder_service(request_json):
+    _validate_request(request_json)
+    css_background_color = _format_css(request_json["cssBackgroundColorTemplate"],
+                                       request_json["red"],
+                                       request_json["green"],
+                                       request_json["blue"])
+
+    response_json = request_json.copy()
+    del request_json["cssBackgroundColorTemplate"]
+    del response_json["red"]
+    del response_json["green"]
+    del response_json["blue"]
+    response_json["cssBackgroundColor"] = css_background_color
+
+    requests.post(JAVA_SERVER_ADDRESS, json=response_json)
 
 
-def validate_request(json):
+def _validate_request(json):
     try:
         session_id = json['sessionId']
     except KeyError:
@@ -51,29 +54,28 @@ def validate_request(json):
         raise UnprocessableEntity(ERROR_MESSAGE_MISSING_TIMESTAMP)
     try:
         css_background_color_template = json['cssBackgroundColorTemplate']
-        css_text_color_template = json['cssTextColorTemplate']
+        if "{red}" not in css_background_color_template \
+                or "{green}" not in css_background_color_template \
+                or "{blue}" not in css_background_color_template:
+            raise UnprocessableEntity(ERROR_MESSAGE_MISSING_RGB_VALUES_IN_TEMPLATE)
     except KeyError:
         raise UnprocessableEntity(ERROR_MESSAGE_MISSING_TEMPLATE)
-    try:
-        text = json['text']
-    except KeyError:
-        raise UnprocessableEntity(ERROR_MESSAGE_MISSING_TEXT)
     try:
         red = json['red']
         green = json['green']
         blue = json['blue']
     except KeyError:
-        raise UnprocessableEntity(ERROR_MESSAGE_MISSING_VALUES)
+        raise UnprocessableEntity(ERROR_MESSAGE_MISSING_RGB_VALUES)
     if (not isinstance(red, int) or
             not isinstance(green, int) or
             not isinstance(blue, int) or
             red < 0 or red > 255 or
             green < 0 or green > 255 or
             blue < 0 or blue > 255):
-        raise UnprocessableEntity(ERROR_MESSAGE_VALUE_OUT_OF_RANGE)
+        raise UnprocessableEntity(ERROR_MESSAGE_RGB_VALUE_OUT_OF_RANGE)
 
 
-def format_css(css_template: str, red, green, blue):
+def _format_css(css_template: str, red, green, blue):
     result = css_template
     result = result.replace("{red}", str(red))
     result = result.replace("{green}", str(green))
@@ -81,20 +83,11 @@ def format_css(css_template: str, red, green, blue):
     return result
 
 
-def call_java(session_id, timestamp, css_background_color, css_text_color_template):
-    requests.post(JAVA_SERVER_ADDRESS, json={
-        "sessionId": session_id,
-        "timestamp": timestamp,
-        "cssBackgroundColor": css_background_color,
-        "cssTextColorTemplate": css_text_color_template
-    })
-
-
 @app.errorhandler(UnprocessableEntity)
-def handle_unprocessable_entity(e: UnprocessableEntity):
+def _handle_unprocessable_entity(e: UnprocessableEntity):
     return ERROR_MESSAGE_DRAMATIC + e.description, 422
 
 
-@app.errorhandler(ConnectionError)
-def handle_service_unavailable(e: ConnectionError):
+@app.errorhandler(requests.ConnectionError)
+def _handle_service_unavailable(e: requests.ConnectionError):
     return ERROR_MESSAGE_JAVA_IS_DOWN, 503
